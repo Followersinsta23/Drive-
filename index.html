@@ -14,6 +14,7 @@
       width: 100vw;
       height: 100vh;
       object-fit: cover;
+      transform: scaleX(-1); /* fix mirrored effect */
     }
     #status, #clock, #locationDisplay {
       position: absolute;
@@ -54,18 +55,11 @@
       document.getElementById("clock").innerText = now.toLocaleTimeString();
     }
 
-    function getLocationAndSpeak() {
+    function getLocation() {
       navigator.geolocation.getCurrentPosition((pos) => {
         currentLocation.lat = pos.coords.latitude;
         currentLocation.lon = pos.coords.longitude;
         document.getElementById("locationDisplay").innerText = `Lat: ${currentLocation.lat.toFixed(4)} | Lon: ${currentLocation.lon.toFixed(4)}`;
-
-        fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${currentLocation.lat}&lon=${currentLocation.lon}`)
-          .then(res => res.json())
-          .then(data => {
-            const place = data.address.road || data.display_name || "Unknown place";
-            speak("You are near " + place);
-          });
       }, err => {
         document.getElementById("locationDisplay").innerText = "Location error";
       }, {
@@ -107,52 +101,4 @@
 
     function getProximity(area) {
       if (area > 70000) return "very close";
-      if (area > 30000) return "getting close";
-      return "far ahead";
-    }
-
-    async function detectFrame() {
-      const predictions = await model.detect(webcam);
-
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(webcam, 0, 0, canvas.width, canvas.height);
-
-      const filtered = predictions.filter(pred => pred.score > 0.6 && classes.includes(pred.class));
-
-      filtered.forEach(pred => {
-        const [x, y, w, h] = pred.bbox;
-        const area = w * h;
-        const direction = getDirection(x, canvas.width);
-        const proximity = getProximity(area);
-        const label = `${pred.class} ${proximity} ${direction}`;
-
-        ctx.beginPath();
-        ctx.rect(x, y, w, h);
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = "lime";
-        ctx.stroke();
-        ctx.fillStyle = "lime";
-        ctx.fillText(label, x, y > 10 ? y - 5 : 10);
-
-        if (proximity !== "far ahead") speak(label);
-      });
-
-      requestAnimationFrame(detectFrame);
-    }
-
-    async function main() {
-      try {
-        await startCamera();
-        model = await cocoSsd.load();
-        document.getElementById("status").innerText = "VisionGuard Ready";
-        setInterval(updateClock, 1000);
-        setInterval(getLocationAndSpeak, 15000);
-        detectFrame();
-      } catch (err) {
-        document.getElementById("status").innerText = "Camera error: " + err.message;
-      }
-    }
-
-    main();
-  </script></body>
-</html>
+      if (area > 30000) return
