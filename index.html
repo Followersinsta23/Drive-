@@ -2,10 +2,8 @@
 <html>
 <head>
   <title>VisionGuard - Vehicle Detection</title>
-  <!-- Load TensorFlow.js and coco-ssd model -->
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.13.0"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.2/dist/coco-ssd.min.js"></script>
-
   <style>
     body {
       margin: 0;
@@ -20,7 +18,7 @@
       width: 100vw;
       height: 100vh;
       object-fit: cover;
-      transform: scaleX(-1); /* mirror view */
+      transform: scaleX(-1);
     }
     #status {
       position: absolute;
@@ -49,7 +47,7 @@
         utterance.lang = 'en-US';
         speechSynthesis.speak(utterance);
         spokenRecently[text] = true;
-        setTimeout(() => { spokenRecently[text] = false }, 4000); // reset after 4s
+        setTimeout(() => { spokenRecently[text] = false }, 4000);
       }
     };
 
@@ -58,7 +56,11 @@
       canvas = document.getElementById('canvas');
       ctx = canvas.getContext('2d');
 
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { exact: "environment" }
+        }
+      });
       webcam.srcObject = stream;
 
       await new Promise((resolve) => {
@@ -101,10 +103,14 @@
     }
 
     async function main() {
-      await startCamera();
-      model = await cocoSsd.load();
-      document.getElementById('status').innerText = "Detecting vehicles...";
-      runDetection();
+      try {
+        await startCamera();
+        model = await cocoSsd.load();
+        document.getElementById('status').innerText = "Detecting vehicles...";
+        runDetection();
+      } catch (err) {
+        document.getElementById('status').innerText = "Camera error: " + err.message;
+      }
     }
 
     main();
