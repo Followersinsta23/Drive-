@@ -1,6 +1,6 @@
 <!DOCTYPE html><html>
 <head>
-  <title>VisionGuard 5.1 – Smart Anti-Repetition Alerts</title>
+  <title>VisionGuard X – Full VFX Mode</title>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.13.0"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.2/dist/coco-ssd.min.js"></script>
   <style>
@@ -35,6 +35,14 @@
       font-weight: bold;
       max-width: 80vw;
     }
+    .pulse {
+      animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(255, 0, 0, 0.5); }
+      70% { box-shadow: 0 0 0 10px rgba(255, 0, 0, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(255, 0, 0, 0); }
+    }
   </style>
 </head>
 <body>
@@ -46,17 +54,14 @@
     let model, webcam, canvas, ctx;
     let pedestrianTimer = null;
     const classes = ['person', 'car', 'truck', 'bus', 'motorcycle', 'bicycle'];
-
-    let spokenLabels = {};
-    const SPEAK_DELAY = 5000;
+    const spokenOnce = new Set();
 
     function speak(text) {
-      const now = Date.now();
-      if (!spokenLabels[text] || now - spokenLabels[text] > SPEAK_DELAY) {
+      if (!spokenOnce.has(text)) {
         const msg = new SpeechSynthesisUtterance(text);
         msg.lang = 'en-US';
         speechSynthesis.speak(msg);
-        spokenLabels[text] = now;
+        spokenOnce.add(text);
       }
     }
 
@@ -101,6 +106,18 @@
       return "far";
     }
 
+    function drawRadar(ctx, centerX, centerY, radius) {
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
+      ctx.strokeStyle = 'lime';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(centerX, centerY);
+      ctx.lineTo(centerX + radius * Math.cos(performance.now() / 200), centerY + radius * Math.sin(performance.now() / 200));
+      ctx.stroke();
+    }
+
     function alertPedestrianCrossing() {
       const warning = document.getElementById("pedestrianWarning");
       warning.innerText = "⚠️ Pedestrian crossing detected!";
@@ -117,6 +134,9 @@
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(webcam, 0, 0, canvas.width, canvas.height);
 
+      // Radar HUD
+      drawRadar(ctx, canvas.width - 80, canvas.height - 80, 60);
+
       const filtered = predictions.filter(pred => pred.score > 0.6 && classes.includes(pred.class));
 
       let pedestrianCount = 0;
@@ -128,22 +148,23 @@
         const proximity = getProximity(area);
         const label = `${pred.class} ${proximity} ${direction}`;
 
+        // VFX Style Drawing
         ctx.beginPath();
         ctx.rect(x, y, w, h);
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = "lime";
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = proximity === "very close" ? "red" : proximity === "close" ? "yellow" : "lime";
         ctx.stroke();
-        ctx.fillStyle = "lime";
+        ctx.fillStyle = ctx.strokeStyle;
+        ctx.font = "16px Arial";
         ctx.fillText(label, x, y > 10 ? y - 5 : 10);
 
+        // Pedestrian logic
         if (pred.class === "person") pedestrianCount++;
 
         if (proximity !== "far") speak(label);
       });
 
-      if (pedestrianCount >= 2) {
-        alertPedestrianCrossing();
-      }
+      if (pedestrianCount >= 2) alertPedestrianCrossing();
 
       requestAnimationFrame(detectFrame);
     }
