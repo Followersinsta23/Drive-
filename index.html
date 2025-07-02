@@ -1,9 +1,9 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>VisionGuard - Full Road Safety Assistant</title>
+  <title>VisionGuard 3.0 – Ultra-Wide Smart Assistant</title>
 
-  <!-- Load TensorFlow.js and coco-ssd -->
+  <!-- TensorFlow.js and coco-ssd -->
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.13.0"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.2/dist/coco-ssd.min.js"></script>
 
@@ -21,17 +21,27 @@
       width: 100vw;
       height: 100vh;
       object-fit: cover;
-      transform: rotate(180deg); /* Fix upside-down view */
+      transform: rotate(180deg);
     }
     #status {
       position: absolute;
-      top: 20px;
-      left: 20px;
+      top: 10px;
+      left: 10px;
       background: rgba(0, 0, 0, 0.7);
       color: #00ff00;
-      padding: 10px 15px;
-      font-size: 18px;
-      border-radius: 8px;
+      padding: 8px 14px;
+      font-size: 16px;
+      border-radius: 6px;
+    }
+    #clock {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      color: white;
+      background: rgba(0, 0, 0, 0.6);
+      padding: 6px 12px;
+      font-size: 14px;
+      border-radius: 6px;
     }
   </style>
 </head>
@@ -39,20 +49,30 @@
   <video id="webcam" autoplay muted playsinline></video>
   <canvas id="canvas"></canvas>
   <div id="status">Loading model...</div>
+  <div id="clock">--:--:--</div>
 
   <script>
     let model, webcam, canvas, ctx;
-    let spokenRecently = {};
+    let lastSpoken = "", lastSpokenTime = 0;
 
-    const speak = (text) => {
-      if (!spokenRecently[text]) {
+    const classes = ['person', 'car', 'truck', 'bus', 'motorcycle', 'bicycle'];
+    const PRIORITY = { person: 1, bus: 2, truck: 3, car: 4, motorcycle: 5, bicycle: 6 };
+
+    function speak(text) {
+      const now = Date.now();
+      if (text !== lastSpoken || now - lastSpokenTime > 5000) {
         const msg = new SpeechSynthesisUtterance(text);
-        msg.lang = 'en-US';
+        msg.lang = "en-US";
         speechSynthesis.speak(msg);
-        spokenRecently[text] = true;
-        setTimeout(() => spokenRecently[text] = false, 4000); // Reset after 4 sec
+        lastSpoken = text;
+        lastSpokenTime = now;
       }
-    };
+    }
+
+    function updateClock() {
+      const now = new Date();
+      document.getElementById("clock").innerText = now.toLocaleTimeString();
+    }
 
     async function startCamera() {
       webcam = document.getElementById("webcam");
@@ -60,9 +80,12 @@
       ctx = canvas.getContext("2d");
 
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { exact: "environment" } }
+        video: {
+          facingMode: { exact: "environment" },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 }
+        }
       });
-
       webcam.srcObject = stream;
 
       return new Promise(resolve => {
@@ -74,18 +97,41 @@
       });
     }
 
-    function proximityLabel(objClass, area) {
-      if (area > 70000) {
-        return `${capitalize(objClass)} very close`;
-      } else if (area > 30000) {
-        return `${capitalize(objClass)} getting close`;
-      } else {
-        return `${capitalize(objClass)} far ahead`;
-      }
+    function getDirection(x, width) {
+      if (x < width / 3) return "on left";
+      else if (x > (2 * width) / 3) return "on right";
+      return "ahead";
     }
 
-    function capitalize(word) {
-      return word.charAt(0).toUpperCase() + word.slice(1);
+    function getProximity(area) {
+      if (area > 70000) return "very close";
+      if (area > 30000) return "getting close";
+      return "far ahead";
+    }
+
+    function summarizeDetections(detections) {
+      const map = {};
+
+      detections.forEach(pred => {
+        const cls = pred.class;
+        const area = pred.bbox[2] * pred.bbox[3];
+        const x = pred.bbox[0];
+        const proximity = getProximity(area);
+        const direction = getDirection(x, canvas.width);
+        const key = `${cls}-${proximity}-${direction}`;
+        map[key] = (map[key] || 0) + 1;
+      });
+
+      const sorted = Object.keys(map).sort((a, b) => {
+        const aClass = a.split('-')[0], bClass = b.split('-')[0];
+        return (PRIORITY[aClass] || 10) - (PRIORITY[bClass] || 10);
+      });
+
+      return sorted.map(k => {
+        const [cls, proximity, direction] = k.split('-');
+        const count = map[k];
+        return `${count} ${cls}${count > 1 ? 's' : ''} ${proximity} ${direction}`;
+      }).join(', ');
     }
 
     async function detectFrame() {
@@ -94,26 +140,25 @@
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(webcam, 0, 0, canvas.width, canvas.height);
 
-      predictions.forEach(pred => {
-        if (pred.score > 0.6) {
-          const [x, y, width, height] = pred.bbox;
-          const area = width * height;
+      const filtered = predictions.filter(pred =>
+        pred.score > 0.6 && classes.includes(pred.class)
+      );
 
-          ctx.beginPath();
-          ctx.rect(x, y, width, height);
-          ctx.lineWidth = 2;
-          ctx.strokeStyle = "lime";
-          ctx.stroke();
-          ctx.fillStyle = "lime";
-          ctx.fillText(pred.class, x, y > 10 ? y - 5 : 10);
-
-          const allowedClasses = ['car', 'truck', 'motorcycle', 'bus', 'bicycle', 'person'];
-          if (allowedClasses.includes(pred.class)) {
-            const msg = proximityLabel(pred.class, area);
-            speak(msg);
-          }
-        }
+      filtered.forEach(pred => {
+        const [x, y, w, h] = pred.bbox;
+        ctx.beginPath();
+        ctx.rect(x, y, w, h);
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = "lime";
+        ctx.stroke();
+        ctx.fillStyle = "lime";
+        ctx.fillText(pred.class, x, y > 10 ? y - 5 : 10);
       });
+
+      if (filtered.length > 0) {
+        const summary = summarizeDetections(filtered);
+        speak(summary);
+      }
 
       requestAnimationFrame(detectFrame);
     }
@@ -123,6 +168,7 @@
         await startCamera();
         model = await cocoSsd.load();
         document.getElementById("status").innerText = "Detecting road objects...";
+        setInterval(updateClock, 1000);
         detectFrame();
       } catch (err) {
         document.getElementById("status").innerText = "Camera error: " + err.message;
