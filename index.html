@@ -2,8 +2,11 @@
 <html>
 <head>
   <title>VisionGuard - Vehicle Detection</title>
+
+  <!-- Load TensorFlow.js and coco-ssd model -->
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.13.0"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.2/dist/coco-ssd.min.js"></script>
+
   <style>
     body {
       margin: 0;
@@ -18,7 +21,7 @@
       width: 100vw;
       height: 100vh;
       object-fit: cover;
-      transform: scaleX(-1);
+      /* Removed mirror effect */
     }
     #status {
       position: absolute;
