@@ -1,10 +1,13 @@
 <!DOCTYPE html><html>
 <head>
-  <title>VisionGuard 4.0 – Camera + Smart Alerts</title>  <!-- Load TensorFlow.js and coco-ssd -->  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.13.0"></script>  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.2/dist/coco-ssd.min.js"></script>  <style>
+  <title>VisionGuard 5.0 – Real-Time Object Detection</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.13.0"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.2/dist/coco-ssd.min.js"></script>
+  <style>
     body {
       margin: 0;
-      background: black;
       overflow: hidden;
+      background: black;
       font-family: Arial, sans-serif;
     }
     #webcam, #canvas {
@@ -14,7 +17,6 @@
       width: 100vw;
       height: 100vh;
       object-fit: cover;
-      transform: scaleX(-1); /* fix mirrored effect */
     }
     #status, #clock, #pedestrianWarning {
       position: absolute;
@@ -26,8 +28,15 @@
     }
     #status { top: 10px; left: 10px; }
     #clock { top: 10px; right: 10px; }
-    #pedestrianWarning { bottom: 10px; left: 10px; max-width: 80vw; color: yellow; font-weight: bold; }
-  </style></head>
+    #pedestrianWarning {
+      bottom: 10px;
+      left: 10px;
+      color: yellow;
+      font-weight: bold;
+      max-width: 80vw;
+    }
+  </style>
+</head>
 <body>
   <video id="webcam" autoplay muted playsinline></video>
   <canvas id="canvas"></canvas>
@@ -82,13 +91,13 @@
     function getDirection(x, width) {
       if (x < width / 3) return "on left";
       else if (x > (2 * width) / 3) return "on right";
-      return "ahead";
+      return "in front";
     }
 
     function getProximity(area) {
       if (area > 70000) return "very close";
-      if (area > 30000) return "getting close";
-      return "far ahead";
+      if (area > 30000) return "close";
+      return "far";
     }
 
     function alertPedestrianCrossing() {
@@ -105,11 +114,7 @@
       const predictions = await model.detect(webcam);
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.save();
-      ctx.scale(-1, 1);
-      ctx.translate(-canvas.width, 0);
       ctx.drawImage(webcam, 0, 0, canvas.width, canvas.height);
-      ctx.restore();
 
       const filtered = predictions.filter(pred => pred.score > 0.6 && classes.includes(pred.class));
 
@@ -118,7 +123,7 @@
       filtered.forEach(pred => {
         const [x, y, w, h] = pred.bbox;
         const area = w * h;
-        const direction = getDirection(x, canvas.width);
+        const direction = getDirection(x + w / 2, canvas.width);
         const proximity = getProximity(area);
         const label = `${pred.class} ${proximity} ${direction}`;
 
@@ -132,7 +137,7 @@
 
         if (pred.class === "person") pedestrianCount++;
 
-        if (proximity !== "far ahead") speak(label);
+        if (proximity !== "far") speak(label);
       });
 
       if (pedestrianCount >= 2) {
