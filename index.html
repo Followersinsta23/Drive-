@@ -37,6 +37,8 @@
     let model, webcam, canvas, ctx;
     let lastSpoken = '', lastSpokenTime = 0;
     let currentLocation = { lat: 0, lon: 0 };
+    let lastSpeedCheck = Date.now();
+    let lastPosition = null;
     const classes = ['person', 'car', 'truck', 'bus', 'motorcycle', 'bicycle'];
 
     function speak(text) {
@@ -55,17 +57,44 @@
       document.getElementById("clock").innerText = now.toLocaleTimeString();
     }
 
-    function getLocation() {
+    function calculateSpeed(pos1, pos2, timeDiff) {
+      const R = 6371e3; // radius of earth in meters
+      const φ1 = pos1.lat * Math.PI/180;
+      const φ2 = pos2.lat * Math.PI/180;
+      const Δφ = (pos2.lat - pos1.lat) * Math.PI/180;
+      const Δλ = (pos2.lon - pos1.lon) * Math.PI/180;
+      const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+                Math.cos(φ1) * Math.cos(φ2) *
+                Math.sin(Δλ/2) * Math.sin(Δλ/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      const distance = R * c; // in meters
+      const speed = (distance / timeDiff) * 1000; // m/s to km/h
+      return speed;
+    }
+
+    function getLocationAndEstimateSpeed() {
       navigator.geolocation.getCurrentPosition((pos) => {
-        currentLocation.lat = pos.coords.latitude;
-        currentLocation.lon = pos.coords.longitude;
-        document.getElementById("locationDisplay").innerText = `Lat: ${currentLocation.lat.toFixed(4)} | Lon: ${currentLocation.lon.toFixed(4)}`;
-      }, err => {
-        document.getElementById("locationDisplay").innerText = "Location error";
-      }, {
-        enableHighAccuracy: true,
-        timeout: 5000,
-        maximumAge: 1000
+        const now = Date.now();
+        const newPosition = {
+          lat: pos.coords.latitude,
+          lon: pos.coords.longitude
+        };
+        currentLocation = newPosition;
+        document.getElementById("locationDisplay").innerText = `Lat: ${newPosition.lat.toFixed(4)} | Lon: ${newPosition.lon.toFixed(4)}`;
+
+        if (lastPosition) {
+          const timeDiff = (now - lastSpeedCheck) / 1000; // seconds
+          const speed = calculateSpeed(lastPosition, newPosition, timeDiff);
+
+          if (speed > 30) {
+            speak("You are going fast. Slow down.");
+          } else if (speed < 5) {
+            speak("You are moving slow.");
+          }
+        }
+
+        lastSpeedCheck = now;
+        lastPosition = newPosition;
       });
     }
 
@@ -101,4 +130,56 @@
 
     function getProximity(area) {
       if (area > 70000) return "very close";
-      if (area > 30000) return
+      if (area > 30000) return "getting close";
+      return "far ahead";
+    }
+
+    async function detectFrame() {
+      const predictions = await model.detect(webcam);
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.save();
+      ctx.scale(-1, 1);
+      ctx.translate(-canvas.width, 0);
+      ctx.drawImage(webcam, 0, 0, canvas.width, canvas.height);
+      ctx.restore();
+
+      const filtered = predictions.filter(pred => pred.score > 0.6 && classes.includes(pred.class));
+
+      filtered.forEach(pred => {
+        const [x, y, w, h] = pred.bbox;
+        const area = w * h;
+        const direction = getDirection(x, canvas.width);
+        const proximity = getProximity(area);
+        const label = `${pred.class} ${proximity} ${direction}`;
+
+        ctx.beginPath();
+        ctx.rect(x, y, w, h);
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = "lime";
+        ctx.stroke();
+        ctx.fillStyle = "lime";
+        ctx.fillText(label, x, y > 10 ? y - 5 : 10);
+
+        if (proximity !== "far ahead") speak(label);
+      });
+
+      requestAnimationFrame(detectFrame);
+    }
+
+    async function main() {
+      try {
+        await startCamera();
+        model = await cocoSsd.load();
+        document.getElementById("status").innerText = "VisionGuard Ready";
+        setInterval(updateClock, 1000);
+        setInterval(getLocationAndEstimateSpeed, 15000);
+        detectFrame();
+      } catch (err) {
+        document.getElementById("status").innerText = "Camera error: " + err.message;
+      }
+    }
+
+    main();
+  </script></body>
+</html>
