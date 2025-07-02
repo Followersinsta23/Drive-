@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>VisionGuard - Object Detection with Voice</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+  <style>
+    video, canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      transform: scaleX(-1); /* Mirror for selfie view */
+    }
+    #label {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(0,0,0,0.7);
+      color: white;
+      padding: 10px;
+      font-size: 20px;
+      border-radius: 8px;
+    }
+  </style>
+</head>
+<body>
+  <video id="webcam" width="640" height="480" autoplay muted></video>
+  <canvas id="canvas" width="640" height="480"></canvas>
+  <div id="label">Loading model...</div>
+
+  <script>
+    let model, ctx, webcam, canvas;
+    let spoken = {};
+    const announce = (text) => {
+      if (!spoken[text]) {
+        spoken[text] = true;
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'en-US';
+        speechSynthesis.speak(utterance);
+        setTimeout(() => spoken[text] = false, 3000); // reset after 3s
+      }
+    };
+
+    async function setup() {
+      webcam = document.getElementById('webcam');
+      canvas = document.getElementById('canvas');
+      ctx = canvas.getContext('2d');
+
+      // Start webcam
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      webcam.srcObject = stream;
+
+      model = await cocoSsd.load();
+      document.getElementById('label').innerText = 'Model loaded. Detecting...';
+      detectFrame();
+    }
+
+    async function detectFrame() {
+      const predictions = await model.detect(webcam);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(webcam, 0, 0, canvas.width, canvas.height);
+
+      predictions.forEach(pred => {
+        if (pred.score > 0.6 && ['person', 'car', 'truck', 'bus'].includes(pred.class)) {
+          ctx.beginPath();
+          ctx.rect(...pred.bbox);
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = 'lime';
+          ctx.fillStyle = 'lime';
+          ctx.stroke();
+          ctx.fillText(pred.class, pred.bbox[0], pred.bbox[1] > 10 ? pred.bbox[1] - 5 : 10);
+
+          announce(`${pred.class} detected`);
+        }
+      });
+
+      requestAnimationFrame(detectFrame);
+    }
+
+    setup();
+  </script>
+</body>
+</html>
