@@ -1,6 +1,6 @@
 <!DOCTYPE html><html>
 <head>
-  <title>VisionGuard 5.0 – Real-Time Object Detection</title>
+  <title>VisionGuard 5.1 – Smart Anti-Repetition Alerts</title>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.13.0"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.2/dist/coco-ssd.min.js"></script>
   <style>
@@ -44,18 +44,19 @@
   <div id="clock">--:--:--</div>
   <div id="pedestrianWarning"></div>  <script>
     let model, webcam, canvas, ctx;
-    let lastSpoken = '', lastSpokenTime = 0;
     let pedestrianTimer = null;
     const classes = ['person', 'car', 'truck', 'bus', 'motorcycle', 'bicycle'];
 
+    let spokenLabels = {};
+    const SPEAK_DELAY = 5000;
+
     function speak(text) {
       const now = Date.now();
-      if (text !== lastSpoken || now - lastSpokenTime > 5000) {
+      if (!spokenLabels[text] || now - spokenLabels[text] > SPEAK_DELAY) {
         const msg = new SpeechSynthesisUtterance(text);
         msg.lang = 'en-US';
         speechSynthesis.speak(msg);
-        lastSpoken = text;
-        lastSpokenTime = now;
+        spokenLabels[text] = now;
       }
     }
 
