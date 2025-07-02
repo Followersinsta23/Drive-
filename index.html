@@ -1,18 +1,18 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>VisionGuard - Vehicle Detection</title>
+  <title>VisionGuard - Full Road Safety Assistant</title>
 
-  <!-- Load TensorFlow.js and coco-ssd model -->
+  <!-- Load TensorFlow.js and coco-ssd -->
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.13.0"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.2/dist/coco-ssd.min.js"></script>
 
   <style>
     body {
       margin: 0;
-      font-family: Arial, sans-serif;
       background: black;
       overflow: hidden;
+      font-family: Arial, sans-serif;
     }
     #webcam, #canvas {
       position: absolute;
@@ -21,7 +21,7 @@
       width: 100vw;
       height: 100vh;
       object-fit: cover;
-      /* Removed mirror effect */
+      transform: rotate(180deg); /* Fix upside-down view */
     }
     #status {
       position: absolute;
@@ -41,32 +41,31 @@
   <div id="status">Loading model...</div>
 
   <script>
-    let model, webcam, ctx, canvas;
+    let model, webcam, canvas, ctx;
     let spokenRecently = {};
 
-    const announce = (text) => {
+    const speak = (text) => {
       if (!spokenRecently[text]) {
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = 'en-US';
-        speechSynthesis.speak(utterance);
+        const msg = new SpeechSynthesisUtterance(text);
+        msg.lang = 'en-US';
+        speechSynthesis.speak(msg);
         spokenRecently[text] = true;
-        setTimeout(() => { spokenRecently[text] = false }, 4000);
+        setTimeout(() => spokenRecently[text] = false, 4000); // Reset after 4 sec
       }
     };
 
     async function startCamera() {
-      webcam = document.getElementById('webcam');
-      canvas = document.getElementById('canvas');
-      ctx = canvas.getContext('2d');
+      webcam = document.getElementById("webcam");
+      canvas = document.getElementById("canvas");
+      ctx = canvas.getContext("2d");
 
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: { exact: "environment" }
-        }
+        video: { facingMode: { exact: "environment" } }
       });
+
       webcam.srcObject = stream;
 
-      await new Promise((resolve) => {
+      return new Promise(resolve => {
         webcam.onloadedmetadata = () => {
           canvas.width = webcam.videoWidth;
           canvas.height = webcam.videoHeight;
@@ -75,7 +74,21 @@
       });
     }
 
-    async function runDetection() {
+    function proximityLabel(objClass, area) {
+      if (area > 70000) {
+        return `${capitalize(objClass)} very close`;
+      } else if (area > 30000) {
+        return `${capitalize(objClass)} getting close`;
+      } else {
+        return `${capitalize(objClass)} far ahead`;
+      }
+    }
+
+    function capitalize(word) {
+      return word.charAt(0).toUpperCase() + word.slice(1);
+    }
+
+    async function detectFrame() {
       const predictions = await model.detect(webcam);
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -84,35 +97,35 @@
       predictions.forEach(pred => {
         if (pred.score > 0.6) {
           const [x, y, width, height] = pred.bbox;
+          const area = width * height;
+
           ctx.beginPath();
           ctx.rect(x, y, width, height);
           ctx.lineWidth = 2;
-          ctx.strokeStyle = 'lime';
-          ctx.fillStyle = 'lime';
+          ctx.strokeStyle = "lime";
           ctx.stroke();
+          ctx.fillStyle = "lime";
           ctx.fillText(pred.class, x, y > 10 ? y - 5 : 10);
 
-          if (pred.class === 'car') {
-            announce("Car ahead");
-          } else if (pred.class === 'truck') {
-            announce("Truck ahead");
-          } else if (pred.class === 'motorcycle') {
-            announce("Bike ahead");
+          const allowedClasses = ['car', 'truck', 'motorcycle', 'bus', 'bicycle', 'person'];
+          if (allowedClasses.includes(pred.class)) {
+            const msg = proximityLabel(pred.class, area);
+            speak(msg);
           }
         }
       });
 
-      requestAnimationFrame(runDetection);
+      requestAnimationFrame(detectFrame);
     }
 
     async function main() {
       try {
         await startCamera();
         model = await cocoSsd.load();
-        document.getElementById('status').innerText = "Detecting vehicles...";
-        runDetection();
+        document.getElementById("status").innerText = "Detecting road objects...";
+        detectFrame();
       } catch (err) {
-        document.getElementById('status').innerText = "Camera error: " + err.message;
+        document.getElementById("status").innerText = "Camera error: " + err.message;
       }
     }
 
