@@ -4,11 +4,12 @@
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.13.0"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.2/dist/coco-ssd.min.js"></script>
   <style>
-    body {
+    html, body {
       margin: 0;
       overflow: hidden;
       background: black;
       font-family: Arial, sans-serif;
+      height: 100%;
     }
     #webcam, #canvas {
       position: absolute;
@@ -18,13 +19,14 @@
       height: 100vh;
       object-fit: cover;
     }
-    #status, #clock, #pedestrianWarning {
+    #status, #clock, #pedestrianWarning, #fullscreenBtn {
       position: absolute;
       background: rgba(0, 0, 0, 0.7);
       color: #00ff00;
       padding: 6px 10px;
       font-size: 14px;
       border-radius: 6px;
+      z-index: 1000;
     }
     #status { top: 10px; left: 10px; }
     #clock { top: 10px; right: 10px; }
@@ -34,6 +36,13 @@
       color: yellow;
       font-weight: bold;
       max-width: 80vw;
+    }
+    #fullscreenBtn {
+      bottom: 10px;
+      right: 10px;
+      background: rgba(0, 255, 0, 0.3);
+      border: 1px solid lime;
+      cursor: pointer;
     }
     .pulse {
       animation: pulse 1.5s infinite;
@@ -50,7 +59,8 @@
   <canvas id="canvas"></canvas>
   <div id="status">Loading model...</div>
   <div id="clock">--:--:--</div>
-  <div id="pedestrianWarning"></div>  <script>
+  <div id="pedestrianWarning"></div>
+  <div id="fullscreenBtn">⛶ Fullscreen</div>  <script>
     let model, webcam, canvas, ctx;
     let pedestrianTimer = null;
     const classes = ['person', 'car', 'truck', 'bus', 'motorcycle', 'bicycle'];
@@ -134,7 +144,6 @@
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(webcam, 0, 0, canvas.width, canvas.height);
 
-      // Radar HUD
       drawRadar(ctx, canvas.width - 80, canvas.height - 80, 60);
 
       const filtered = predictions.filter(pred => pred.score > 0.6 && classes.includes(pred.class));
@@ -148,7 +157,6 @@
         const proximity = getProximity(area);
         const label = `${pred.class} ${proximity} ${direction}`;
 
-        // VFX Style Drawing
         ctx.beginPath();
         ctx.rect(x, y, w, h);
         ctx.lineWidth = 3;
@@ -158,9 +166,7 @@
         ctx.font = "16px Arial";
         ctx.fillText(label, x, y > 10 ? y - 5 : 10);
 
-        // Pedestrian logic
         if (pred.class === "person") pedestrianCount++;
-
         if (proximity !== "far") speak(label);
       });
 
@@ -169,6 +175,21 @@
       requestAnimationFrame(detectFrame);
     }
 
+    function enterFullscreen() {
+      const docElm = document.documentElement;
+      if (docElm.requestFullscreen) {
+        docElm.requestFullscreen();
+      } else if (docElm.mozRequestFullScreen) {
+        docElm.mozRequestFullScreen();
+      } else if (docElm.webkitRequestFullscreen) {
+        docElm.webkitRequestFullscreen();
+      } else if (docElm.msRequestFullscreen) {
+        docElm.msRequestFullscreen();
+      }
+    }
+
+    document.getElementById("fullscreenBtn").addEventListener("click", enterFullscreen);
+
     async function main() {
       try {
         await startCamera();
@@ -176,6 +197,7 @@
         document.getElementById("status").innerText = "VisionGuard Ready";
         setInterval(updateClock, 1000);
         detectFrame();
+        enterFullscreen();
       } catch (err) {
         document.getElementById("status").innerText = "Camera error: " + err.message;
       }
