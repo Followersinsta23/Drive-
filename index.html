@@ -16,7 +16,7 @@
       object-fit: cover;
       transform: scaleX(-1); /* fix mirrored effect */
     }
-    #status, #clock {
+    #status, #clock, #pedestrianWarning {
       position: absolute;
       background: rgba(0, 0, 0, 0.7);
       color: #00ff00;
@@ -26,14 +26,17 @@
     }
     #status { top: 10px; left: 10px; }
     #clock { top: 10px; right: 10px; }
+    #pedestrianWarning { bottom: 10px; left: 10px; max-width: 80vw; color: yellow; font-weight: bold; }
   </style></head>
 <body>
   <video id="webcam" autoplay muted playsinline></video>
   <canvas id="canvas"></canvas>
   <div id="status">Loading model...</div>
-  <div id="clock">--:--:--</div>  <script>
+  <div id="clock">--:--:--</div>
+  <div id="pedestrianWarning"></div>  <script>
     let model, webcam, canvas, ctx;
     let lastSpoken = '', lastSpokenTime = 0;
+    let pedestrianTimer = null;
     const classes = ['person', 'car', 'truck', 'bus', 'motorcycle', 'bicycle'];
 
     function speak(text) {
@@ -88,6 +91,16 @@
       return "far ahead";
     }
 
+    function alertPedestrianCrossing() {
+      const warning = document.getElementById("pedestrianWarning");
+      warning.innerText = "⚠️ Pedestrian crossing detected!";
+      speak("Caution. Pedestrian crossing ahead");
+      if (pedestrianTimer) clearTimeout(pedestrianTimer);
+      pedestrianTimer = setTimeout(() => {
+        warning.innerText = "";
+      }, 5000);
+    }
+
     async function detectFrame() {
       const predictions = await model.detect(webcam);
 
@@ -99,6 +112,8 @@
       ctx.restore();
 
       const filtered = predictions.filter(pred => pred.score > 0.6 && classes.includes(pred.class));
+
+      let pedestrianCount = 0;
 
       filtered.forEach(pred => {
         const [x, y, w, h] = pred.bbox;
@@ -115,8 +130,14 @@
         ctx.fillStyle = "lime";
         ctx.fillText(label, x, y > 10 ? y - 5 : 10);
 
+        if (pred.class === "person") pedestrianCount++;
+
         if (proximity !== "far ahead") speak(label);
       });
+
+      if (pedestrianCount >= 2) {
+        alertPedestrianCrossing();
+      }
 
       requestAnimationFrame(detectFrame);
     }
